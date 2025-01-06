@@ -13,7 +13,7 @@ public with sharing class GenericPermissionSetAssignerHandler {
               FROM User 
               WHERE Profile.UserLicense.Name NOT IN('Analytics Cloud Integration User', 'Analytics Cloud Integration Use', 'Chatter Free')];
     }
-    //Retriving Target User From Org based on user licence of Source Org.
+    //Retriving Target User From Org based on user licence of Source Org selected user.
     @AuraEnabled(cacheable=true)
     public static List<User> getTargetUsers(Id userId, Id targetUserId){
        List<User> sourceUser=[SELECT Id, Name,IsActive, Profile.UserLicense.Name 
@@ -33,19 +33,23 @@ public with sharing class GenericPermissionSetAssignerHandler {
      //Retriving SourceUser Assigned permission From org.
         @AuraEnabled(cacheable= true)
         public static List<PermissionSetAssignment> getSourcePermissionSet(Id sourceUser) {
+       //  List<Id> PSAIds = new List<Id>{'0PSdL000001W0KVWA0', '0PSdL000006qrspWAA', '0PSdL000006qykbWAA', '0PSdL000001W0KpWAK','0PSdL000004Qk4vWAC','0PSdL000004Qk9lWAC','0PSdL000001W0KyWAK','0PSdL000007jGJ7WAM'};
+         String standardPSAssignToUser = 'X00%';
           return [SELECT  PermissionSet.Name, PermissionSetId
                   FROM PermissionSetAssignment
                   WHERE AssigneeId = : sourceUser 
-                  AND PermissionSetId!='0PSdL000001W0KpWAK'];
+                  AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser)];
         }
       //Retriving PermissionSet Assigned Of Target User From Org.
       @AuraEnabled(cacheable=true)
       public static List<PermissionSetAssignment> getTargetPermissionSet(Id targetUser){
-      List<Id> PSAIds = new List<Id>{'0PSdL000001W0LBWA0', '0PSdL000001W0KVWA0'};
+      String standardPSAssignToUser = 'X00%';
+    //  List<Id> PSAIds = new List<Id>{'0PSdL000001W0LBWA0', '0PSdL000001W0KVWA0','0PSdL000001W0KyWAK','0PSdL000004Qk9lWAC','0PSdL000007jGJ7WAM','0PSdL000004Qk4vWAC','0PSdL000001W0KpWAK','0PSdL000006qykbWAA'};
           return [SELECT  PermissionSet.Name, PermissionSetId
           FROM PermissionSetAssignment
           WHERE AssigneeId = : targetUser 
-          AND PermissionSetId NOT IN :PSAIds];
+          
+          AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser)];
       }
 
 
@@ -91,12 +95,15 @@ public with sharing class GenericPermissionSetAssignerHandler {
             //   System.debug('permissionSetAssignmentIdsTarget::::'+permissionSetAssignmentIds);
 
                 /*Standard PermissionSet of Target user */
-                List<Id> PSAIds = new List<Id>{'0PadL000000YwRWSA0', '0PadL000000YwRPSA0','0PSdL000001W0KpWAK'};
+              //  List<Id> PSAIds = new List<Id>{'0PadL000000YwRWSA0', '0PadL000000YwRPSA0','0PSdL000001W0KpWAK','0PadL000004vYViSAM', '0PadL000004vaXVSAY','0PadL000004vakPSAQ','0PadL000004vayvSAA'};
                 /*Retriving PermissionSetassignment of target user */
+                String standardPSAssignToUser = 'X00%';
+                                       
                 List<PermissionSetAssignment> permissionSetAssignments = [SELECT Id
                                                                           FROM PermissionSetAssignment
-                                                                          WHERE Id NOT IN :PSAIds
-                                                                          AND AssigneeId = :targetUserId];
+                                                                          WHERE  AssigneeId = :targetUserId
+                                                                          AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser)
+                                                                          ];
 
                 Map<Id,PermissionSetAssignment> deletedpermissionSetAssignmentmap = new Map<Id,PermissionSetAssignment>();                                                        
                 for(PermissionSetAssignment psa: PermissionSetAssignments){
@@ -147,12 +154,14 @@ public with sharing class GenericPermissionSetAssignerHandler {
             System.debug('upgradetargetPermission::::'+upgradeTargetPermission);
             List<PermissionSetAssignment> psaNeedToBeUpgratedForTargetUser = new List<PermissionSetAssignment>();
             List<Id> targetUserpermissionSetIds = new List<Id>();
-            List<Id> standardPermissionSetIds =new List<Id>{'0PSdL000001W0LBWA0','0PSdL000001W0KVWA0'};
+         //   List<Id> standardPermissionSetIds =new List<Id>{'0PSdL000001W0LBWA0','0PSdL000001W0KVWA0','0PSdL000001W0KpWAK','0PSdL000004Qk4vWAC','0PSdL000004Qk9lWAC','0PSdL000001W0KyWAK'};
+            String standardPSAssignToUser = 'X00%';
             //Retriving assigned permissions of target user.
             List<PermissionSetAssignment> assignedTargetPermissions = [SELECT PermissionSetId 
                                                                       FROM PermissionSetAssignment
                                                                       WHERE AssigneeId = :targetUserId 
-                                                                      AND PermissionSetId NOT IN :standardPermissionSetIds]; 
+                                                                      AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser)
+                                                                     ]; 
             
             for(PermissionSetAssignment psa: assignedTargetPermissions){
               targetUserpermissionSetIds.add(psa.PermissionSetId);
@@ -165,10 +174,13 @@ public with sharing class GenericPermissionSetAssignerHandler {
                                                 PermissionSetId=psId ));}}
             }else{
               System.debug('no selected permission::::'+upgradeTargetPermission.size());
+           //     List<Id> stdPermissionSetIds =new List<Id>{'0PSdL000001W0LBWA0','0PSdL000001W0KVWA0','0PSdL000001W0KpWAK','0PSdL000004Qk4vWAC','0PSdL000004Qk9lWAC','0PSdL000001W0KyWAK','0PSdL000006qykbWAA','0PSdL000006qrspWAA'};
+                String standardPSAssignToUser1 = 'X00%';
             for(PermissionSetAssignment psId: [SELECT  PermissionSet.Name, PermissionSetId
                                               FROM PermissionSetAssignment
                                               WHERE AssigneeId = :sourceUserId 
-                                              AND PermissionSetId!='0PSdL000001W0KpWAK']){
+                                              AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser1)
+                                              ]){
               if(!targetUserpermissionSetIds.contains(psId.id)){
                 psaNeedToBeUpgratedForTargetUser.add(new PermissionSetAssignment(
                                               AssigneeId=targetUserId,
@@ -194,11 +206,15 @@ public with sharing class GenericPermissionSetAssignerHandler {
           System.debug('sourceUserId:::'+sourceUserId + 'targetUserId::'+targetUserId); 
           Map<String, Boolean> cloneTargetPermission = (Map<String, Boolean>) JSON.deserialize(cloneTarget, Map<String, Boolean>.class);
           System.debug('clonetargetPermission::::'+cloneTargetPermission);
+          String standardPSAssignToUser = 'X00%';
+       //   List<Id> stdPermissionSetIds =new List<Id>{'0PSdL000001W0LBWA0','0PSdL000001W0KVWA0','0PSdL000001W0KpWAK','0PSdL000004Qk4vWAC','0PSdL000004Qk9lWAC','0PSdL000001W0KyWAK','0PSdL000006qykbWAA','0PSdL000006qrspWAA'};                                              
           List<PermissionSetAssignment> psaNeedToBeClonedForTargetUser = new List<PermissionSetAssignment>();
           List<PermissionSetAssignment> targetUserAssignedPermissions = [SELECT PermissionSetId 
                                                                           FROM PermissionSetAssignment
                                                                           WHERE AssigneeId = :targetUserId 
-                                                                          AND PermissionSetId !='0PSdL000001W0KVWA0'];
+                                                                          AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser)
+                                                                          ];
+                                                        System.debug('targetUserAssignedPermissions;;;toCheck'+targetUserAssignedPermissions);
           if(targetUserAssignedPermissions.size()>0){
           delete targetUserAssignedPermissions;
           }
@@ -217,7 +233,7 @@ public with sharing class GenericPermissionSetAssignerHandler {
             for(PermissionSetAssignment psId: [SELECT  PermissionSet.Name, PermissionSetId
                                               FROM PermissionSetAssignment
                                               WHERE AssigneeId = :sourceUserId
-                                              AND PermissionSetId !='0PSdL000001W0KVWA0']){
+                                              AND (NOT PermissionSet.Name LIKE :standardPSAssignToUser)]){
 
             psaNeedToBeClonedForTargetUser.add(new PermissionSetAssignment(
               AssigneeId=targetUserId,
