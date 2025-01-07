@@ -1,0 +1,177 @@
+@isTest
+public class GenericPermissionSetAssignerHandlerTest {
+  @testSetup
+    static void setupTestData() {
+        // Fetch the standard profile
+        Profile standardProfile = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+
+        // Create source and target users
+        List<User> users = new List<User>{
+            new User(
+                FirstName = 'Source',
+                LastName = 'User',
+                Email = 'sourceuser@example.com',
+                Username = 'sourceuser@example.com.test',
+                Alias = 'srcusr',
+                ProfileId = standardProfile.Id,
+                TimeZoneSidKey = 'America/New_York',
+                LocaleSidKey = 'en_US',
+                EmailEncodingKey = 'UTF-8',
+                LanguageLocaleKey = 'en_US'
+            ),
+            new User(
+                FirstName = 'Target',
+                LastName = 'User',
+                Email = 'targetuser@example.com',
+                Username = 'targetuser@example.com.test',
+                Alias = 'tgtusr',
+                ProfileId = standardProfile.Id,
+                TimeZoneSidKey = 'America/New_York',
+                LocaleSidKey = 'en_US',
+                EmailEncodingKey = 'UTF-8',
+                LanguageLocaleKey = 'en_US'
+            )
+        };
+        insert users;
+
+        // Store user IDs
+        Id sourceUserId = users[0].Id;
+        Id targetUserId = users[1].Id;
+
+        // Create five permission sets
+        List<PermissionSet> permissionSets = new List<PermissionSet>();
+        for (Integer i = 1; i <= 5; i++) {
+            permissionSets.add(new PermissionSet(
+                Name = 'CustomPermissionSet' + i,
+                Label = 'Custom Permission Set ' + i
+            ));
+        }
+        insert permissionSets;
+
+        // Assign all permission sets to the source user
+        List<PermissionSetAssignment> psaList = new List<PermissionSetAssignment>();
+        for (PermissionSet ps : permissionSets) {
+            psaList.add(new PermissionSetAssignment(
+                AssigneeId = sourceUserId,
+                PermissionSetId = ps.Id
+            ));
+        }
+
+        // Assign two specific permission sets to the target user
+        List<PermissionSetAssignment> psaListofTargetuser = new List<PermissionSetAssignment>();
+        psaListofTargetuser.add(new PermissionSetAssignment(AssigneeId = targetUserId, PermissionSetId = permissionSets[0].Id));
+        psaListofTargetuser.add(new PermissionSetAssignment(AssigneeId = targetUserId, PermissionSetId = permissionSets[1].Id));
+
+        // Insert all permission set assignments
+        insert psaList;
+        insert psaListofTargetuser;
+    }
+
+    @isTest
+    static void testGetSourceUsers() {
+        Test.startTest();
+        List<User> users = GenericPermissionSetAssignerHandler.getSourceUsers();
+        Test.stopTest();
+
+        System.assertNotEquals(0, users.size(), 'Source users should be retrieved.');
+    }
+
+    @isTest
+    static void testGetTargetUsers() {
+        User sourceUser = [SELECT Id FROM User WHERE FirstName = 'Source' LIMIT 1];
+        User targetUser = [SELECT Id FROM User WHERE FirstName = 'Target' LIMIT 1];
+
+        Test.startTest();
+        List<User> targetUsers = GenericPermissionSetAssignerHandler.getTargetUsers(sourceUser.Id, targetUser.Id);
+        Test.stopTest();
+
+        System.assertNotEquals(1, targetUsers.size(), 'Target users should be retrieved.');
+    }
+
+    @isTest
+    static void testGetSourcePermissionSet() {
+        User sourceUser = [SELECT Id FROM User WHERE FirstName = 'Source' LIMIT 1];
+
+        Test.startTest();
+        List<PermissionSetAssignment> psaList = GenericPermissionSetAssignerHandler.getSourcePermissionSet(sourceUser.Id);
+        Test.stopTest();
+
+        System.assertEquals(5, psaList.size(), 'All 5 permission sets for the target user should be retrieved.');
+    }
+     @isTest
+    static void testGetTargetPermissionSet() {
+        User targetUser = [SELECT Id FROM User WHERE FirstName = 'Target' LIMIT 1];
+
+        Test.startTest();
+        List<PermissionSetAssignment> psaList = GenericPermissionSetAssignerHandler.getTargetPermissionSet(targetUser.Id);
+        Test.stopTest();
+
+        System.assertEquals(2, psaList.size(), '2 permission sets for the source user should be retrieved.');
+    }
+
+    @isTest
+    static void testAssignCustomPermissionSetsToTargetUser() {
+        User sourceUser = [SELECT Id FROM User WHERE FirstName = 'Source' LIMIT 1];
+        User targetUser = [SELECT Id FROM User WHERE FirstName = 'Target' LIMIT 1];
+        PermissionSet psa = [SELECT Id FROM PermissionSet WHERE Name = 'CustomPermissionSet1' LIMIT 1];
+        PermissionSet psaTwo = [SELECT Id FROM PermissionSet WHERE Name = 'CustomPermissionSet2' LIMIT 1];
+                     
+        Map<String, Boolean> customSource = new Map<String, Boolean>();
+        customSource.put(psa.Id, true);
+
+        Map<String, Boolean> customTarget = new Map<String, Boolean>();
+        customTarget.put(psaTwo.Id, true);
+
+        String customSourceJson = JSON.serialize(customSource);
+        String customTargetJson = JSON.serialize(customTarget);
+
+        Test.startTest();
+        GenericPermissionSetAssignerHandler.assignCustomPermissionSetsToTargetUser(sourceUser.Id, targetUser.Id, customSourceJson, customTargetJson);
+        Test.stopTest();
+
+        List<PermissionSetAssignment> psaList = [SELECT Id FROM PermissionSetAssignment WHERE AssigneeId = :targetUser.Id];
+        System.assertNotEquals(0, psaList.size(), 'Custom permission sets should be assigned to the target user.');
+    }
+ @isTest
+    static void testUpgradePermissionSetOfTargetUser() {
+        // Retrieve users and permission sets
+        User sourceUser = [SELECT Id FROM User WHERE FirstName = 'Source' LIMIT 1];
+        User targetUser = [SELECT Id FROM User WHERE FirstName = 'Target' LIMIT 1];
+        PermissionSet newPermissionSet = [SELECT Id,Name FROM PermissionSet WHERE Name = 'CustomPermissionSet5' LIMIT 1];
+
+        // Create JSON body with upgraded permission set
+        Map<String, Boolean> upgradeMap = new Map<String, Boolean>();
+        upgradeMap.put(newPermissionSet.Id, true);
+        String upgradeJson = JSON.serialize(upgradeMap);
+
+        Test.startTest();
+        GenericPermissionSetAssignerHandler.upgradePermissionSetOfTargetUser(sourceUser.Id, targetUser.Id, upgradeJson);
+        Test.stopTest();
+
+        // Validate the upgrade
+        List<PermissionSetAssignment> targetAssignments = [SELECT PermissionSetId 
+                                                            FROM PermissionSetAssignment 
+                                                            WHERE AssigneeId = :targetUser.Id];
+        System.assertEquals(4, targetAssignments.size(), 'The target user should have exactly one upgraded permission set assigned.');
+      //  System.assertEquals('CustomPermissionSet5', targetAssignments[0].Name, 'The upgraded permission set should match the expected one.');
+    }
+
+    @isTest
+    static void testClonePermissionSetOfTargetUser() {
+        User sourceUser = [SELECT Id FROM User WHERE FirstName = 'Source' LIMIT 1];
+        User targetUser = [SELECT Id FROM User WHERE FirstName = 'Target' LIMIT 1];
+        PermissionSet psa = [SELECT Id FROM PermissionSet WHERE Name = 'CustomPermissionSet3' LIMIT 1];
+
+        Map<String, Boolean> cloneTarget = new Map<String, Boolean>();
+        cloneTarget.put(psa.Id, true);
+
+        String cloneTargetJson = JSON.serialize(cloneTarget);
+
+        Test.startTest();
+        GenericPermissionSetAssignerHandler.clonePermissionSetOfTargetUser(sourceUser.Id, targetUser.Id, cloneTargetJson);
+        Test.stopTest();
+
+        List<PermissionSetAssignment> psaList = [SELECT Id FROM PermissionSetAssignment WHERE AssigneeId = :targetUser.Id];
+        System.assertNotEquals(0, psaList.size(), 'Permission sets should be cloned for the target user.');
+    }
+}
